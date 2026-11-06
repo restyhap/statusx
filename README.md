@@ -108,7 +108,20 @@ macOS 菜单栏状态工具：用**一条自己的状态项**显示系统指标�
 
 ---
 
-## 四、构建与运行
+## 四、下载安装
+
+| 平台 | 地址 |
+|---|---|
+| GitHub Releases | https://github.com/restyhap/statusx/releases/latest |
+| Gitee Releases | https://gitee.com/restyhap/statusx/releases/latest |
+
+安装：下载 `StatusX-x.y.z.dmg` → 拖进「应用程序」→ 首次运行到**系统设置 → 隐私与安全性 → 辅助功能**勾选 StatusX。
+未做公证（ad-hoc 签名），首次打开若提示"无法验证开发者"：右键 → 打开，或
+`xattr -dr com.apple.quarantine /Applications/StatusX.app`。
+
+> 仅支持 macOS 13+，纯菜单栏应用（无 Dock 图标、无 iOS/Windows 版本）。
+
+## 五、构建与运行
 
 ```bash
 ./scripts/build-app.sh          # 生成 build/StatusX.app
@@ -129,7 +142,7 @@ swift build -c release && .build/release/StatusX   # 继承终端的辅助功能
 
 ---
 
-## 五、性能
+## 六、性能
 
 | 场景 | CPU | 常驻内存 |
 |---|---|---|
@@ -141,7 +154,7 @@ swift build -c release && .build/release/StatusX   # 继承终端的辅助功能
 
 ---
 
-## 六、命名
+## 七、命名
 
 | 位置 | 取值 |
 |---|---|
@@ -154,7 +167,7 @@ swift build -c release && .build/release/StatusX   # 继承终端的辅助功能
 
 ---
 
-## 七、已知边界
+## 八、已知边界
 
 - 状态项宽度受菜单栏剩余空间限制：菜单栏被塞满时，系统会把整项收进 `<<`（此时栏上看不到，
   点 `<<` 能看到），这是系统行为，与带宽设置无关；
