@@ -14,6 +14,9 @@ cp "$ROOT/.build/release/StatusX" "$APP/Contents/MacOS/StatusX"
 cp "$ROOT/Packaging/Info.plist" "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Resources/assets"
 cp "$ROOT/Assets/svg/"*.svg "$APP/Contents/Resources/assets/"
+# 应用图标（没有它就显示系统通用图标）
+[ -f "$ROOT/Packaging/AppIcon.icns" ] || "$ROOT/scripts/make-icon.sh"
+cp "$ROOT/Packaging/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 
 echo "已生成：$APP"

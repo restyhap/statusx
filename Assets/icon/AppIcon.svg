@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#2A3346"/>
+      <stop offset="0.55" stop-color="#1A2130"/>
+      <stop offset="1" stop-color="#0D111A"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#22C1A6"/>
+      <stop offset="1" stop-color="#5AE6C8"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#2F6FE4"/>
+      <stop offset="1" stop-color="#63A8FF"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#7A45D8"/>
+      <stop offset="1" stop-color="#B07CFF"/>
+    </linearGradient>
+    <linearGradient id="topline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.10"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="26" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="squircle">
+      <rect x="82" y="82" width="860" height="860" rx="196" ry="196"/>
+    </clipPath>
+  </defs>
+
+  <!-- 背板：macOS 圆角矩形 -->
+  <g clip-path="url(#squircle)">
+    <rect x="82" y="82" width="860" height="860" fill="url(#bg)"/>
+    <!-- 顶部柔光 -->
+    <ellipse cx="512" cy="60" rx="470" ry="240" fill="#7FB2FF" opacity="0.10"/>
+    <!-- 菜单栏示意：一条细线 + 三个状态小块 -->
+    <rect x="170" y="236" width="684" height="22" rx="11" fill="url(#topline)"/>
+    <rect x="560" y="232" width="74" height="30" rx="9" fill="#FFFFFF" opacity="0.86"/>
+    <rect x="650" y="232" width="74" height="30" rx="9" fill="#FFFFFF" opacity="0.55"/>
+    <rect x="740" y="232" width="74" height="30" rx="9" fill="#FFFFFF" opacity="0.30"/>
+
+    <!-- 三根指标柱：CPU / 内存 / 网络 -->
+    <g filter="url(#glow)" opacity="0.55">
+      <rect x="212" y="470" width="132" height="300" rx="66" fill="url(#bar1)"/>
+      <rect x="446" y="382" width="132" height="388" rx="66" fill="url(#bar2)"/>
+      <rect x="680" y="540" width="132" height="230" rx="66" fill="url(#bar3)"/>
+    </g>
+    <rect x="212" y="470" width="132" height="300" rx="66" fill="url(#bar1)"/>
+    <rect x="446" y="382" width="132" height="388" rx="66" fill="url(#bar2)"/>
+    <rect x="680" y="540" width="132" height="230" rx="66" fill="url(#bar3)"/>
+
+    <!-- 基线 -->
+    <rect x="196" y="790" width="632" height="16" rx="8" fill="#FFFFFF" opacity="0.22"/>
+  </g>
+
+  <!-- 内描边，提升边缘质感 -->
+  <rect x="82.75" y="82.75" width="858.5" height="858.5" rx="196" ry="196" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="1.5"/>
+</svg>
