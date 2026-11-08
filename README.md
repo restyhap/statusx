@@ -124,9 +124,13 @@ macOS 菜单栏状态工具：用**一条自己的状态项**显示系统指标�
 ## 五、构建与运行
 
 ```bash
-./scripts/build-app.sh          # 生成 build/StatusX.app
+./scripts/build-app.sh          # 生成 build/StatusX.app（缺图标会先自动生成 icns）
+./scripts/make-dmg.sh           # 生成 build/StatusX-<version>.dmg（内含 Applications 软链）
 open build/StatusX.app          # 首次启动需授权：系统设置 → 隐私与安全性 → 辅助功能
 ```
+
+图标由 `Assets/icon/AppIcon.svg` 经 `scripts/make-icon.sh` 生成 `Packaging/AppIcon.icns`
+（需要 `brew install librsvg`，已生成的 icns 随仓库提交，日常构建无需重跑）。
 
 开发时直接跑：
 
