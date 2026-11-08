@@ -100,6 +100,47 @@ enum Str {
                    "Нажмите значок, чтобы показать его в строке меню (макс. 10)."])
     }
 
+    // MARK: 被系统折叠时的提示
+
+    static var foldedTitle: String {
+        L10n.pick(["StatusX is hidden by the menu bar",
+                   "StatusX 被菜单栏收起了",
+                   "StatusX 被選單列收起了",
+                   "StatusX가 메뉴 막대에서 가려졌습니다",
+                   "StatusX wird von der Menüleiste verdeckt",
+                   "StatusX est masqué par la barre des menus",
+                   "La barra de menús ha ocultado StatusX",
+                   "O StatusX foi ocultado pela barra de menus",
+                   "StatusX скрыт строкой меню"])
+    }
+
+    static var foldedBody: String {
+        L10n.pick(["There is not enough room left in the menu bar, so macOS moved StatusX into the overflow area.\n\n• Hold ⌘ and drag StatusX to the right side of the menu bar, or\n• show fewer components in Settings, or\n• remove a few menu bar icons with ⌘-drag.",
+                   "菜单栏已经没有空位，macOS 把 StatusX 收进了溢出区（栏上那个「«」或「»」）。\n\n• 按住 ⌘ 把 StatusX 拖到菜单栏右侧，或\n• 到设置里少显示几个组件，或\n• 用 ⌘ 拖走一些别的菜单栏图标腾出位置。",
+                   "選單列已經沒有空位，macOS 把 StatusX 收進了溢出區（列上那個「«」或「»」）。\n\n• 按住 ⌘ 把 StatusX 拖到選單列右側，或\n• 到設定裡少顯示幾個元件，或\n• 用 ⌘ 拖走一些別的選單列圖示騰出位置。",
+                   "메뉴 막대에 공간이 없어 macOS가 StatusX를 오버플로 영역으로 옮겼습니다.\n\n• ⌘를 누른 채 StatusX를 메뉴 막대 오른쪽으로 끌거나,\n• 설정에서 표시할 구성 요소를 줄이거나,\n• 다른 메뉴 막대 아이콘을 ⌘로 끌어 공간을 만드세요.",
+                   "In der Menüleiste ist kein Platz mehr, daher hat macOS StatusX in den Überlaufbereich verschoben.\n\n• ⌘ halten und StatusX nach rechts ziehen, oder\n• in den Einstellungen weniger Komponenten anzeigen, oder\n• einige Menüleisten-Symbole mit ⌘ wegziehen.",
+                   "La barra des menus est pleine : macOS a déplacé StatusX dans la zone de débordement.\n\n• Maintenez ⌘ et faites glisser StatusX vers la droite, ou\n• affichez moins de composants dans les réglages, ou\n• retirez quelques icônes de la barre avec ⌘.",
+                   "La barra de menús está llena, así que macOS ha movido StatusX al área de desbordamiento.\n\n• Mantén ⌘ y arrastra StatusX a la derecha, o\n• muestra menos componentes en Ajustes, o\n• retira algunos iconos de la barra con ⌘.",
+                   "A barra de menus está cheia, por isso o macOS moveu o StatusX para a área de transbordo.\n\n• Mantenha ⌘ e arraste o StatusX para a direita, ou\n• mostre menos componentes nos Ajustes, ou\n• retire alguns ícones da barra com ⌘.",
+                   "В строке меню нет места, поэтому macOS убрал StatusX в область переполнения.\n\n• Удерживайте ⌘ и перетащите StatusX правее, или\n• уменьшите число компонентов в настройках, или\n• уберите несколько значков из строки меню с помощью ⌘."])
+    }
+
+    static var foldedCompact: String {
+        L10n.pick(["Show one item only", "只显示一个组件", "只顯示一個元件", "구성 요소 하나만 표시",
+                   "Nur eine Komponente", "N'afficher qu'un élément", "Mostrar solo un elemento",
+                   "Mostrar apenas um item", "Оставить один элемент"])
+    }
+
+    static var foldedOpenSettings: String {
+        L10n.pick(["Open Settings", "打开设置", "開啟設定", "설정 열기", "Einstellungen öffnen",
+                   "Ouvrir les réglages", "Abrir Ajustes", "Abrir Ajustes", "Открыть настройки"])
+    }
+
+    static var foldedOK: String {
+        L10n.pick(["OK", "知道了", "知道了", "확인", "OK", "OK", "OK", "OK", "ОК"])
+    }
+
     // MARK: 状态组件（310px 带子里的指标）
 
     static var metricCPU: String {

@@ -719,8 +719,6 @@ final class FoldedPanel: NSPanel, NSWindowDelegate {
 
     /// 进程列表：卡片里只露 visible 行，其余在这个小滚动区里滚
     private func makeList(views: [NSView], visible: Int, rowHeight: CGFloat = 24) -> ListBox {
-        let w = panelWidth - cardInset * 2 - cardPadding * 2
-        let gutter: CGFloat = 15
         let box = ListBox(visible: visible, rowHeight: rowHeight)
 
         box.doc.translatesAutoresizingMaskIntoConstraints = true
@@ -730,7 +728,6 @@ final class FoldedPanel: NSPanel, NSWindowDelegate {
         // 纯 frame 驱动：滚动视图里再叠 auto layout，高度会被压回可视区，滚不动
         box.stack.translatesAutoresizingMaskIntoConstraints = true
         box.doc.addSubview(box.stack)
-        _ = gutter
 
         box.scroll.hasVerticalScroller = true
         box.scroll.drawsBackground = false

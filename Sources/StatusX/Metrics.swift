@@ -522,7 +522,6 @@ final class Metrics {
         var groups: [String: (name: String, cpu: Double, mem: Double, pids: [Int32], canQuit: Bool)] = [:]
         var alive: [Int32: (time: Double, at: TimeInterval)] = [:]
 
-        let me = getpid()
         for i in 0..<Int(n) {
             let pid = pids[i]
             guard pid > 1 else { continue }   // 自己仍然列出来（但不给 ✕），方便看自身占用

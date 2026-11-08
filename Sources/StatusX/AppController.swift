@@ -20,24 +20,30 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var lastStripNote = "-"
     /// 上一次渲染的组件顺序（排序变化时做淡入）
     private var lastKinds: [String] = []
+    private var probingSpace = false
     /// 菜单栏里实际可用的宽度（别把带子撑到被系统收进 << 里面）
     private var freeSpace: CGFloat = Placer.bandWidth
-    private var probingSpace = false
     /// 最近一次系统指标采样
     private var metricSnapshot = MetricSnapshot.empty
     /// 指标定时器是否在跑
     private var metricsRunning = false
+
+    /// 应用已在运行、用户再次打开时（Dock/`open -a`）：把设置窗口叫出来，
+    /// 这样即使状态项被系统折叠、菜单栏上看不到入口，也还能进设置调整。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag || panel?.isVisible != true { openSettings() }
+        return true
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         L10n.apply(config)
         Log.line("===== StatusX 启动 ===== AX=\(MBar.trusted()) 屏宽=\(MBar.screenRightEdge()) 语言=\(L10n.lang.rawValue) 配置语言=\(config.language ?? "nil")")
         Log.line("配置：带宽固定 \(Int(config.bandWidth))px（菜单栏顺序由用户 ⌘+拖拽自行调整）")
 
-        guard MBar.trusted() else {
-            Log.line("缺少辅助功能权限，弹出授权提示")
-            let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(opts)
-            return
+        // 辅助功能权限只影响「读取/点击别人的菜单栏图标」这类旧能力；
+        // 指标带子、面板、设置都不需要它——没有权限也必须正常起栏，不能直接 return。
+        if !MBar.trusted() {
+            Log.line("无辅助功能权限（不影响指标带子与面板，仅菜单栏扫描能力不可用）")
         }
 
         // 创建时就按设计宽度申请，避免先窄后宽被系统推到刘海左侧（实测：26→310 会落到 x=583）
@@ -58,6 +64,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         placer = Placer(config: config, item: item)
         placer.onWidthChanged = { [weak self] w in self?.renderStrip(width: w) }
         renderStrip(width: item.length)
+
+        // 系统把状态项排到哪儿由它决定：启动后确认一次，被折叠就明确告诉用户
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.checkFolded()
+        }
 
         // 指标采样：拿到新数据就重画带子（只有启用的组件才采集）
         Metrics.shared.onChange = { [weak self] snap in
@@ -252,10 +263,6 @@ final class AppController: NSObject, NSApplicationDelegate {
                             width: image.size.width,
                             height: BarStrip.imageHeight)
 
-        // 自我收敛：如果这条带子被系统塞进了 << （窗口不在可视区），就一点点收窄
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            self?.ensureVisible()
-        }
 
         // 组件顺序/组合变了：淡入一下，避免整条带子“跳”成新顺序
         let kindsKey = kinds.map(\.rawValue)
@@ -308,9 +315,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             : foldedRaw.sorted { $0.appName.localizedStandardCompare($1.appName) == .orderedAscending }
 
         let p = panelForConfig()
-        let keptCount = all
-            .filter { !$0.isSystemBar && $0.pid != getpid() && $0.frame.origin.x >= myX }
-            .count
         p.rebuild(snapshot: metricSnapshot,
                   kinds: enabledMetrics,
                   settings: metricSettingsMap,
@@ -450,21 +454,51 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     }
 
-    private var shrinkTries = 0
+    private var foldChecked = false
+    private var foldHintShown = false
 
-    /// 兜底：极少数情况下窗口坐标会离开可视区（本机收进 `<<` 时坐标不变，检测不到，仅作保险）
-    private func ensureVisible() {
+    /// 菜单栏里放不下时，macOS 会把整条状态项收进溢出区（`<<` / `>>`），栏上就一片空白。
+    /// 宽度怎么调都救不回来（位置由系统决定），所以只确认一次，然后把「怎么让它重新出现」讲清楚。
+    private func checkFolded() {
+        foldChecked = true
         guard let w = item?.button?.window else { return }
         let f = w.frame
         let visible = f.width > 40 && f.origin.x >= Placer.zoneStart - 2 && f.origin.y > 0
-        guard !visible else { shrinkTries = 0; return }
-        guard shrinkTries < 5 else { return }
-        shrinkTries += 1
-        let next = max(160, (item?.length ?? Placer.bandWidth) - 24)
-        Log.line("带子被收进 <<（窗口 x=\(Int(f.origin.x)) w=\(Int(f.width))）→ 收窄到 \(Int(next))px")
-        freeSpace = next
-        renderStrip(width: next)
+        guard !visible else { return }
+        Log.line("带子被系统收进溢出区（窗口 x=\(Int(f.origin.x)) w=\(Int(f.width))，视口左缘 \(Int(Placer.zoneStart))）")
+        guard !foldHintShown else { return }
+        foldHintShown = true
+        DispatchQueue.main.async { [weak self] in self?.showFoldHint() }
     }
+
+    private func showFoldHint() {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.alertStyle = .informational
+        a.messageText = Str.foldedTitle
+        a.informativeText = Str.foldedBody
+        a.addButton(withTitle: Str.foldedCompact)
+        a.addButton(withTitle: Str.foldedOpenSettings)
+        a.addButton(withTitle: Str.foldedOK)
+        switch a.runModal() {
+        case .alertFirstButtonReturn:  applyCompactMode()
+        case .alertSecondButtonReturn: openSettings()
+        default: break
+        }
+    }
+
+    /// 一键回到「一个组件」的最窄形态：菜单栏挤爆时这是唯一能立刻看见的办法
+    private func applyCompactMode() {
+        guard let first = enabledMetrics.first else { return }
+        config.metrics = [first.rawValue]
+        config.save()
+        shrinkFoldHintShown()
+        renderStrip(width: item?.length ?? Placer.bandWidth)
+        Log.line("已切到紧凑模式：只保留 \(first.rawValue)")
+    }
+
+    /// 切完紧凑模式允许下一次再提示（万一还是放不下）
+    private func shrinkFoldHintShown() { foldHintShown = false }
 
     private var outsideMonitor: Any?
 
