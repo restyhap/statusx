@@ -6,21 +6,29 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$ROOT/Packaging/Info.plist")}"
 APP="$ROOT/build/StatusX.app"
 DMG="$ROOT/build/StatusX-$VERSION.dmg"
-STAGE="$(mktemp -d)/StatusX"
-RW="$(mktemp -u).dmg"
 VOL="StatusX"
 
 [ -d "$APP" ] || { echo "缺少 $APP，先跑 ./scripts/build-app.sh"; exit 1; }
 
+safedel() {
+    case "$1" in
+        /tmp/*|/var/folders/*) rm -rf "$1" ;;
+        *) echo "拒绝删除非临时目录: $1" >&2; exit 1 ;;
+    esac
+}
+
 # 1. 暂存目录：应用 + 指向 /Applications 的软链
-mkdir -p "$STAGE"
+WORK="$(mktemp -d -t statusx-XXXXXX)"
+STAGE="$WORK/stage"; mkdir -p "$STAGE"
+RW="$WORK/rw.dmg"
 cp -R "$APP" "$STAGE/StatusX.app"
 ln -s /Applications "$STAGE/Applications"
 
 # 2. 先做可读写镜像，摆好图标位置，再压缩成只读
-rm -f "$DMG" "$RW"
+RW="$(mktemp -u -t statusx-XXXXXX).dmg"
 hdiutil create -quiet -volname "$VOL" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RW" >/dev/null
-MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen "$RW" | grep -o '/Volumes/.*' | head -1)"
+MOUNT="$(hdiutil attach -readwrite -noverify -noautoopen "$RW" 2>/dev/null \
+         | grep -o '/Volumes/[^ ]*' | head -1)"
 
 if [ -n "$MOUNT" ]; then
     # 3. 窗口布局（Finder 不可用时忽略，不影响可安装性）
@@ -42,13 +50,12 @@ tell application "Finder"
 end tell
 OSA
     sync
-    hdiutil detach "$MOUNT" -quiet >/dev/null 2>&1 || hdiutil detach "$MOUNT" -force -quiet >/dev/null 2>&1
+    hdiutil detach "$MOUNT" -force -quiet >/dev/null 2>&1 || true
 fi
 
 # 4. 压缩
 hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
-rm -f "$RW"
-rm -rf "$(dirname "$STAGE")"
+safedel "$WORK"
 
 echo "已生成：$DMG"
 shasum -a 256 "$DMG" | awk '{print "SHA256: " $1}'
