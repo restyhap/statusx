@@ -50,11 +50,28 @@ tell application "Finder"
 end tell
 OSA
     sync
+    # 卷图标：挂载后在 Finder 侧边栏/桌面显示 StatusX 图标
+    if [ -f "$ROOT/Packaging/AppIcon.icns" ]; then
+        cp "$ROOT/Packaging/AppIcon.icns" "$MOUNT/.VolumeIcon.icns" 2>/dev/null || true
+        SetFile -a C "$MOUNT" 2>/dev/null || true
+    fi
     hdiutil detach "$MOUNT" -force -quiet >/dev/null 2>&1 || true
 fi
 
 # 4. 压缩
 hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
+
+# 5. 给 dmg 文件本身设自定义图标：下载后在 Finder / 下载列表里就是 StatusX 的图标
+ICON="$ROOT/Packaging/AppIcon.icns"
+if [ -f "$ICON" ]; then
+    cp "$ICON" "$WORK/app.icns"
+    sips -i "$WORK/app.icns" >/dev/null 2>&1 || true
+    DeRez -only icns "$WORK/app.icns" > "$WORK/icon.rsrc" 2>/dev/null || true
+    if [ -s "$WORK/icon.rsrc" ]; then
+        Rez -append "$WORK/icon.rsrc" -o "$DMG" >/dev/null 2>&1 || true
+        SetFile -a C "$DMG" >/dev/null 2>&1 || true
+    fi
+fi
 safedel "$WORK"
 
 echo "已生成：$DMG"
