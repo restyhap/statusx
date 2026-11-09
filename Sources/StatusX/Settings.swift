@@ -585,7 +585,7 @@ final class SettingsWindowController: NSWindowController {
         let bg = popupRow(Str.background, items: backgrounds, selected: bgIndex) { [weak self] i in
             self?.update { $0.panelBackground = i == 1 ? "white" : "popover" }
         }
-        let width = numberRow(Str.panelWidth, value: Int(config.panelWidth ?? 340), range: 320...420, unit: "pt") { [weak self] v in
+        let width = numberRow(Str.panelWidth, value: Int(config.panelWidth ?? 360), range: 320...460, unit: "pt") { [weak self] v in
             self?.update { $0.panelWidth = Double(v) }
         }
 

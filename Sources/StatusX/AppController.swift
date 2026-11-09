@@ -293,7 +293,16 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc private func togglePanel() {
         // 整条 310px 带子都是"开面板"；右侧真实应用图标是别人的状态项，由系统处理点击。
-        if let p = panel, p.isVisible { p.orderOut(nil); return }
+        let now = CFAbsoluteTimeGetCurrent()
+        if let p = panel, p.isVisible {
+            p.orderOut(nil)
+            lastPanelCloseAt = now
+            return
+        }
+        // 「点面板外面关闭」的全局监听会把**同一次点状态项**也当成外部点击：
+        // 它先关面板，紧接着这里又会把面板重新打开（表现为「再点也不会隐藏」）。
+        // 同一次点击造成的关闭，短时间内不再重开。
+        if now - lastPanelCloseAt < 0.4 { return }
 
         let tops = Metrics.shared.sampleProcessTops()
         metricSnapshot.topCPU = tops.cpu
@@ -339,7 +348,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func panelForConfig() -> FoldedPanel {
         let key = [
             config.panelBackground ?? "popover",
-            "\(Int(config.panelWidth ?? 340))",
+            "\(Int(config.panelWidth ?? 360))",
             "\(config.maxListRows ?? 14)",
             "\(config.showStatsCard ?? true)"
         ].joined(separator: "|")
@@ -347,7 +356,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         if let p = panel, key == panelKey { return p }
 
         let p = FoldedPanel(background: Self.panelBackground(config.panelBackground),
-                            width: CGFloat(config.panelWidth ?? 340),
+                            width: CGFloat(config.panelWidth ?? 360),
                             maxRows: config.maxListRows ?? 14,
                             showStats: config.showStatsCard ?? true)
         panel = p
@@ -400,7 +409,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         // 外观相关配置变了 → 丢弃旧面板，下次点击时重建
         let probe = [
             config.panelBackground ?? "popover",
-            "\(Int(config.panelWidth ?? 340))",
+            "\(Int(config.panelWidth ?? 360))",
             "\(config.maxListRows ?? 14)",
             "\(config.showStatsCard ?? true)",
             L10n.lang.rawValue
@@ -501,12 +510,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func shrinkFoldHintShown() { foldHintShown = false }
 
     private var outsideMonitor: Any?
+    /// 最近一次关闭面板的时间（挡住同一次点击引起的「关了又开」）
+    private var lastPanelCloseAt: CFAbsoluteTime = 0
 
     /// 点面板以外的地方就关掉（代替「失焦自动关」）
     private func startOutsideClickMonitor() {
         guard outsideMonitor == nil else { return }
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
             guard let self else { return }
+            // 点在状态项上：这是「收起面板」的点击，交给 togglePanel，别在这里先关一次
+            if let f = self.item?.button?.window?.frame, f.contains(NSEvent.mouseLocation) { return }
+            self.lastPanelCloseAt = CFAbsoluteTimeGetCurrent()
             self.panel?.orderOut(nil)
             if let m = self.outsideMonitor {
                 NSEvent.removeMonitor(m)
