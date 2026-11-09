@@ -139,6 +139,10 @@ final class SettingsWindowController: NSWindowController {
     private var sideButtons: [SidebarButton] = []
     private var retained: [ActionBox] = []
     private var page: Page = .general
+    /// 构建「通用」页时是否已有辅助功能权限（用于授权后自动收起该区块）
+    private var permissionTrustedAtBuild = true
+    /// 权限区块显示期间轮询状态：用户去系统设置授权后，这里 1 秒内自动收起
+    private var permissionTimer: Timer?
     /// 状态组件页里正在编辑哪个组件
     private var editingKind: MetricKind = .cpu
     /// 关闭窗口触发的退出只走一次（terminate 会再关一次窗口）
@@ -287,6 +291,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func show(_ p: Page) {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
         page = p
         for btn in sideButtons {
             btn.setSelected(btn.tag == p.rawValue)
@@ -370,6 +376,42 @@ final class SettingsWindowController: NSWindowController {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.widthAnchor.constraint(equalToConstant: rowLabelWidth).isActive = true
         return sxHStack([label, control, sxSpacer()], spacing: 10)
+    }
+
+    /// 权限行：左标签 + 右侧「去授权」按钮
+    private func permissionRow(_ title: String, buttonTitle: String,
+                               action: @escaping () -> Void) -> NSView {
+        let label = sxLabel(title, size: 12)
+        let btn = NSButton(title: buttonTitle, target: nil, action: nil)
+        btn.bezelStyle = .rounded
+        btn.controlSize = .small
+        btn.font = .systemFont(ofSize: 12)
+        let box = ActionBox { _ in action() }
+        retained.append(box)
+        btn.target = box
+        btn.action = #selector(ActionBox.fire(_:))
+        return sxHStack([label, sxSpacer(), btn], spacing: 10)
+    }
+
+    /// 权限区块在屏幕上时每秒查一次；授权成功后立刻重建通用页（区块消失）
+    private func startPermissionWatch() {
+        permissionTimer?.invalidate()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            guard MBar.trusted() != self.permissionTrustedAtBuild else { return }
+            t.invalidate()
+            self.permissionTimer = nil
+            if self.page == .general { self.show(.general) }
+        }
+    }
+
+    /// 弹出系统授权提示，并直接跳到「隐私与安全性 → 辅助功能」
+    private func openAccessibilitySettings() {
+        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(opts)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func checkbox(_ title: String, on: Bool, action: @escaping (Bool) -> Void) -> NSButton {
@@ -563,7 +605,21 @@ final class SettingsWindowController: NSWindowController {
         closePopup.target = closeBox
         closePopup.action = #selector(ActionBox.fire(_:))
 
-        return pane([
+        // 权限：只在「还没授权」时出现；授权后整块消失
+        permissionTrustedAtBuild = MBar.trusted()
+        var rows: [NSView] = []
+        if !permissionTrustedAtBuild {
+            rows += [
+                sectionTitle(Str.secPermission),
+                permissionRow(Str.permAccessibility, buttonTitle: Str.permGrant) { [weak self] in
+                    self?.openAccessibilitySettings()
+                },
+                hint(Str.permAccessibilityNote),
+                gapRow(12)
+            ]
+            startPermissionWatch()
+        }
+        rows += [
             sectionTitle(Str.secStartup),
             login,
             gapRow(12),
@@ -578,7 +634,8 @@ final class SettingsWindowController: NSWindowController {
             width,
             gapRow(12),
             noteRow(Str.noteInstant)
-        ])
+        ]
+        return pane(rows)
     }
 
     private func widgetPane() -> NSView {
@@ -866,6 +923,13 @@ final class SettingsWindowController: NSWindowController {
 
 extension SettingsWindowController: NSWindowDelegate {
     /// 关闭设置窗口：minimize = 只关窗，StatusX 继续守在菜单栏；quit = 直接退出 App
+    /// 用户去系统设置授权后回到本窗口：权限状态变了就重建通用页（该区块随即消失）
+    func windowDidBecomeKey(_ notification: Notification) {
+        guard page == .general else { return }
+        guard MBar.trusted() != permissionTrustedAtBuild else { return }
+        show(.general)
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard (config.closeAction ?? "minimize") == "quit" else { return }
         guard !quittingFromClose else { return }

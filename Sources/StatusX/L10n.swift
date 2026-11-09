@@ -551,6 +551,35 @@ enum Str {
                    "Abrir ao iniciar sessão", "Запускать при входе"])
     }
 
+    // MARK: 权限（未授权时才显示）
+
+    static var secPermission: String {
+        L10n.pick(["Permissions", "权限", "權限", "권한", "Berechtigungen",
+                   "Autorisations", "Permisos", "Permissões", "Разрешения"])
+    }
+
+    static var permAccessibility: String {
+        L10n.pick(["Accessibility", "辅助功能", "輔助使用", "손쉬운 사용", "Bedienungshilfen",
+                   "Accessibilité", "Accesibilidad", "Acessibilidade", "Универсальный доступ"])
+    }
+
+    static var permGrant: String {
+        L10n.pick(["Open Settings", "去授权", "前往授權", "설정 열기", "Einstellungen öffnen",
+                   "Ouvrir les réglages", "Abrir Ajustes", "Abrir Ajustes", "Открыть настройки"])
+    }
+
+    static var permAccessibilityNote: String {
+        L10n.pick(["Only needed to read and click other apps' menu bar icons. Status items and the panel work without it.",
+                   "仅用于读取和点击其它应用的菜单栏图标；状态栏带子与面板不需要它也能正常工作。",
+                   "僅用於讀取和點擊其他應用程式的選單列圖示；狀態列與面板不需要它也能正常運作。",
+                   "다른 앱의 메뉴 막대 아이콘을 읽고 클릭할 때만 필요합니다. 상태 막대와 패널은 없어도 동작합니다.",
+                   "Wird nur zum Lesen und Anklicken fremder Menüleisten-Symbole benötigt. Statusleiste und Panel funktionieren auch ohne.",
+                   "Nécessaire uniquement pour lire et cliquer les icônes des autres apps. La barre et le panneau fonctionnent sans.",
+                   "Solo se necesita para leer y pulsar iconos de otras apps. La barra y el panel funcionan sin ello.",
+                   "Só é necessário para ler e clicar ícones de outras apps. A barra e o painel funcionam sem isso.",
+                   "Нужен только для чтения и нажатия значков других приложений. Строка и панель работают и без него."])
+    }
+
     static var secLanguage: String {
         L10n.pick(["Language", "语言", "語言", "언어", "Sprache", "Langue", "Idioma", "Idioma", "Язык"])
     }
