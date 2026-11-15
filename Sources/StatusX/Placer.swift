@@ -114,13 +114,18 @@ final class Placer {
     }
 
     /// 项是否真的在菜单栏可见区。
-    /// 有辅助功能权限时以 AX 为准；没有权限时用窗口服务器（本进程 layer 25 窗口）兜底。
+    /// 有辅助功能权限时以 AX 为准；没有权限时看窗口落在哪里。
     var isVisible: Bool {
         if MBar.trusted() {
             return MBar.own() != nil
         }
-        // 没有辅助功能权限：用窗口服务器里「本进程有没有 layer 25 的窗口」兜底。
-        // 不能退回 frame：被收进 `<<` 时 frame 仍可能停在屏幕内（实测 x=1162 w=318）。
-        return MBar.ownStatusWindowVisible()
+        // 没有辅助功能权限：macOS 26 的 CGWindowList 不再列出自己的状态项窗口
+        //（实测本进程窗口数 0，窗口服务器兜底永远是 false），改用窗口位置判断：
+        // 放得下时窗口落在刘海右侧（x ≥ zoneStart）；被折叠/推走时系统会把窗口推到
+        // 刘海左侧或屏幕外（实测 600px 时 x=612，zoneStart=1140）。
+        guard let f = item.button?.window?.frame else { return false }
+        return f.width > 4
+            && f.minX >= Placer.zoneStart - 1
+            && f.maxX <= MBar.screenWidth - 4
     }
 }

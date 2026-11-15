@@ -112,6 +112,8 @@ max_width = re.search(r"static\s+let\s+maxWidth:\s*CGFloat\s*=\s*310", placer_sr
 probe = re.search(r"static\s+let\s+probeWidth:\s*CGFloat\s*=\s*18", placer_src)
 binary = re.search(r"func\s+search\(low:\s*CGFloat,\s*high:\s*CGFloat", placer_src)
 ax_visible = re.search(r"MBar\.own\(\)\s*!=\s*nil", placer_src)
+frame_fallback = re.search(r"item\.button\?\.window\?\.frame", placer_src)
+dead_cgwindow = re.search(r"ownStatusWindowVisible", placer_src + app_src)
 ignores_config = re.search(r"func\s+apply\(_ config: Config\)\s*\{\}", placer_src)
 capped = re.search(r"let\s+capped\s*=\s*min\(Self\.maxWidth", placer_src)
 cfg_clamped = re.search(r"bandWidth\s*=\s*min\(310", cfg_src)
@@ -123,6 +125,11 @@ for name, hit in [
     ("Placer.probeWidth = 18（先最窄落地）", probe),
     ("二分探测可用槽位（search(low:high:)）", binary),
     ("可见性以 AX extras 为准（MBar.own()）", ax_visible),
+    ("无 AX 时用窗口位置兜底", frame_fallback),
+    (
+        "不再依赖失效的 CGWindowList（ownStatusWindowVisible）",
+        None if dead_cgwindow else True,
+    ),
     ("Placer.apply 不再理会 bandWidth/autoWidth", ignores_config),
     ("最终宽度 min(maxWidth, 探测值)", capped),
     ("Config 解码 bandWidth 后封顶 310", cfg_clamped),
@@ -136,10 +143,12 @@ b_ok = all(
         probe,
         binary,
         ax_visible,
+        frame_fallback,
         ignores_config,
         capped,
         cfg_clamped,
         render_write is None,
+        dead_cgwindow is None,
     ]
 )
 print(
