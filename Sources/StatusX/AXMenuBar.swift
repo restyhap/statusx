@@ -299,6 +299,25 @@ enum MBar {
         return out
     }
 
+    /// 自己那条状态项窗口是不是真的渲染在菜单栏上。
+    /// 不需要辅助功能/屏幕录制权限：CGWindowList 对**本进程**的窗口总是可见。
+    /// 被收进 `<<` 时窗口会落到 y<0；被推到刘海下面时 y 正常但不在 AX extras 里——
+    /// 所以它只能作为没有 AX 权限时的兜底判据。
+    static func ownStatusWindowVisible() -> Bool {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
+        let pid = getpid()
+        for w in list {
+            guard let layer = w[kCGWindowLayer as String] as? Int, layer == 25,
+                  let owner = w[kCGWindowOwnerPID as String] as? pid_t, owner == pid,
+                  let b = w[kCGWindowBounds as String] as? [String: CGFloat],
+                  let y = b["Y"], let width = b["Width"],
+                  y >= 0, y < 40, width > 4 else { continue }
+            return true
+        }
+        return false
+    }
+
     static func press(_ el: AXUIElement) -> AXError {
         AXUIElementPerformAction(el, kAXPressAction as CFString)
     }

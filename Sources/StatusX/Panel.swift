@@ -26,8 +26,12 @@ final class CardView: NSView {
         layer?.masksToBounds = true
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor(calibratedWhite: 0.45, alpha: 0.18).cgColor
-        layer?.backgroundColor = NSColor.white.cgColor
+        // 深色外观下 labelColor 是白字：卡片底不能写死纯白（白底白字看不清）。
+        // controlBackgroundColor 跟外观走，浅色模式近白、深色模式深灰，与 labelColor 恒成对比。
+        // CALayer 的 bg color 不会随外观自动刷新：panel 重建 / 深浅切换时由 `refreshCardColor()` 重写一次。
+        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         translatesAutoresizingMaskIntoConstraints = false
+        refreshCardColor()
 
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -43,6 +47,11 @@ final class CardView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("不支持 nib") }
+
+    /// 深浅外观切换时 CALayer 不会自己跟 system colour 变：手动重写一次底色
+    func refreshCardColor() {
+        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+    }
 
     /// 加一行满宽内容
     func addRow(_ view: NSView) {
@@ -181,6 +190,16 @@ enum Panel {
         }
         if kill(pid, SIGTERM) == 0 { return "已发送 SIGTERM" }
         return "失败：\(String(cString: strerror(errno)))"
+    }
+}
+
+/// 深浅外观切换后把所有卡片底色跟上
+extension FoldedPanel {
+    /// 遍历 root 里的卡片重写底色（白底白字的问题正出在这层）
+    func refreshCardColors() {
+        for v in root.arrangedSubviews {
+            (v as? CardView)?.refreshCardColor()
+        }
     }
 }
 

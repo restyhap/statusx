@@ -20,9 +20,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var lastStripNote = "-"
     /// 上一次渲染的组件顺序（排序变化时做淡入）
     private var lastKinds: [String] = []
-    private var probingSpace = false
-    /// 菜单栏里实际可用的宽度（别把带子撑到被系统收进 << 里面）
-    private var freeSpace: CGFloat = Placer.bandWidth
+
     /// 最近一次系统指标采样
     private var metricSnapshot = MetricSnapshot.empty
     /// 指标定时器是否在跑
@@ -38,7 +36,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         L10n.apply(config)
         Log.line("===== StatusX 启动 ===== AX=\(MBar.trusted()) 屏宽=\(MBar.screenRightEdge()) 语言=\(L10n.lang.rawValue) 配置语言=\(config.language ?? "nil")")
-        Log.line("配置：带宽固定 \(Int(config.bandWidth))px（菜单栏顺序由用户 ⌘+拖拽自行调整）")
+        Log.line("配置：带宽上限 \(Int(config.bandWidth))px（实际宽度由菜单栏可用槽位决定，菜单栏顺序由用户 ⌘+拖拽自行调整）")
 
         // 辅助功能权限只影响「读取/点击别人的菜单栏图标」这类旧能力；
         // 指标带子、面板、设置都不需要它——没有权限也必须正常起栏，不能直接 return。
@@ -46,8 +44,14 @@ final class AppController: NSObject, NSApplicationDelegate {
             Log.line("无辅助功能权限（不影响指标带子与面板，仅菜单栏扫描能力不可用）")
         }
 
-        // 创建时就按设计宽度申请，避免先窄后宽被系统推到刘海左侧（实测：26→310 会落到 x=583）
-        item = NSStatusBar.system.statusItem(withLength: Placer.bandWidth)
+        // 先按最窄宽度落地再校准：创建时就申请 310 的话，菜单栏放不下时系统会把它
+        // 直接推到刘海下面/收进 <<，之后再改窄也不会回到栏上（2026-11-15 实测）。
+        let initialWidth: CGFloat = {
+            if let raw = ProcessInfo.processInfo.environment["STATUSX_DEBUG_BAND"],
+               let v = Double(raw), v > 10 { return CGFloat(v) }
+            return Placer.probeWidth
+        }()
+        item = NSStatusBar.system.statusItem(withLength: initialWidth)
         if ProcessInfo.processInfo.environment["STATUSX_NO_AUTOSAVE"] != nil {
             item.autosaveName = nil
         } else {
@@ -62,8 +66,27 @@ final class AppController: NSObject, NSApplicationDelegate {
         configureButton()
 
         placer = Placer(config: config, item: item)
-        placer.onWidthChanged = { [weak self] w in self?.renderStrip(width: w) }
+        placer.onWidthChanged = { [weak self] w in
+            guard let self else { return }
+            // 改长度会让系统异步重建按钮：target/action 与子视图都会丢，画之前重挂一遍
+            self.configureButton()
+            self.renderStrip(width: w)
+        }
         renderStrip(width: item.length)
+
+        // 屏幕/分辨率变化、睡眠唤醒后菜单栏容量会变：重新校准一次（平时不动宽度）
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.relayout(reason: "屏幕变化")
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.relayout(reason: "唤醒")
+        }
 
         // 系统把状态项排到哪儿由它决定：启动后确认一次，被折叠就明确告诉用户
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
@@ -74,7 +97,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         Metrics.shared.onChange = { [weak self] snap in
             guard let self else { return }
             self.metricSnapshot = snap
-            self.renderStrip(width: self.item?.length ?? Placer.bandWidth)
+            self.renderStrip(width: self.placer.width)
             // 面板开着时同步刷新，看到的才是实时数据
             if let p = self.panel, p.isVisible {
                 let tR = CFAbsoluteTimeGetCurrent()
@@ -93,7 +116,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         syncMetrics()
 
-        // 菜单栏明暗跟着系统外观变，标识颜色也要重画
+        // 菜单栏明暗跟着系统外观变：标识颜色重画，面板卡片底色也跟着改
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
@@ -101,7 +124,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             BarStrip.resetDarkCache()
             guard let self else { return }
-            self.renderStrip(width: self.item?.length ?? 26)
+            self.panel?.refreshCardColors()
+            self.renderStrip(width: self.placer.width)
         }
 
         relayout(reason: "启动")
@@ -137,7 +161,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             return
         }
         busy = true
-        placer.layout(reason: reason) { [weak self] in
+        // 一次校准：先窄落地 → 量出本次可用槽位 → 只长一次（≤310），之后不再变
+        placer.settle(reason: reason) { [weak self] _ in
             guard let self else { return }
             self.busy = false
             // 后台预热图标，免得点开面板时才逐个查
@@ -207,35 +232,22 @@ final class AppController: NSObject, NSApplicationDelegate {
         let kinds = enabledMetrics
         let settings = metricSettingsMap
 
-        // 宽度跟着组件数量走：最小 = 一个组件宽，最大 = 310。
-        // 用「预留宽度」（按最宽可能值算）而不是当前值，数值跳动不会带着状态项伸缩。
-        let fill = config.autoWidth ?? true
-        var target = min(Placer.bandWidth, freeSpace)
-        if fill, !kinds.isEmpty {
-            let all = BarStrip.reserveWidth(metrics: metricSnapshot, items: kinds,
-                                            settings: settings, dark: dark)
-            let one = kinds.map {
-                BarStrip.reserveWidth(metrics: metricSnapshot, items: [$0],
-                                      settings: settings, dark: dark)
-            }.max() ?? BarStrip.minWidth
-            target = min(Placer.bandWidth, max(one, all))
-        }
-        if abs(item.length - target) > 1 {
-            item.length = target
-            Log.line("带宽 \(Int(target))px（自适应 · \(kinds.count) 个组件）")
-            // 改长度会让系统**异步**重建按钮：下一帧再挂回调与子视图，否则这一轮画在旧按钮上（实测整条空白且点不动）
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.configureButton()
-                self.renderStrip(width: target)
-            }
-            return
-        }
-        let image = BarStrip.make(dark: dark, metrics: metricSnapshot,
-                                  items: kinds,
-                                  settings: settings,
-                                  maxWidth: target - 2,
-                                  fillWidth: fill)
+        // 宽度由 Placer 校准后固定（≤310）；这里只按它画，绝不自己改 item.length。
+        // 这样 2 秒一次的指标刷新不会带着状态项伸缩，也不会把它重新推进溢出区。
+        let target = max(Placer.probeWidth, min(Placer.maxWidth, width))
+        // 一个组件都塞不进时画小标识，别留一条看不见的空白
+        let oneFits: Bool = {
+            guard let first = kinds.first else { return false }
+            return BarStrip.contentWidth(metrics: metricSnapshot, items: [first],
+                                         settings: settings, dark: dark) <= target - 2
+        }()
+        let image = oneFits
+            ? BarStrip.make(dark: dark, metrics: metricSnapshot,
+                            items: kinds,
+                            settings: settings,
+                            maxWidth: max(1, target - 2),
+                            fillWidth: true)
+            : BarStrip.glyph(dark: dark)
         // 状态项比带子宽时按钮会把自己的图居中；改成贴左的子视图，右侧留白仍整段可点
         item.button?.image = nil
         item.button?.title = ""
@@ -282,7 +294,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             }
             Log.line("bounds \(button.bounds) hidden \(button.isHidden) alpha \(button.alphaValue) window \(button.window != nil) 按钮 \(Unmanaged.passUnretained(button).toOpaque()) target \(button.target != nil) subviews \(button.subviews.count) hostSuper \(host.superview === button) hostAlpha \(host.alphaValue) img \(host.image?.size ?? .zero) frame \(host.frame)")
         }
-        let note = "带宽 \(Int(width)) · 自动分配 \(fill ? "开" : "关") · \(kinds.map(\.rawValue).joined(separator: ","))"
+        let note = "带宽 \(Int(width)) · \(kinds.map(\.rawValue).joined(separator: ","))"
         if note != lastStripNote {
             lastStripNote = note
             Log.line("图标带：带宽 \(Int(width)) · 组件 \(kinds.isEmpty ? "无" : kinds.map(\.rawValue).joined(separator: ","))")
@@ -293,16 +305,11 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc private func togglePanel() {
         // 整条 310px 带子都是"开面板"；右侧真实应用图标是别人的状态项，由系统处理点击。
-        let now = CFAbsoluteTimeGetCurrent()
+        // 显示状态下再点一次 → 隐藏；隐藏状态下点 → 显示。
         if let p = panel, p.isVisible {
-            p.orderOut(nil)
-            lastPanelCloseAt = now
+            closePanel()
             return
         }
-        // 「点面板外面关闭」的全局监听会把**同一次点状态项**也当成外部点击：
-        // 它先关面板，紧接着这里又会把面板重新打开（表现为「再点也不会隐藏」）。
-        // 同一次点击造成的关闭，短时间内不再重开。
-        if now - lastPanelCloseAt < 0.4 { return }
 
         let tops = Metrics.shared.sampleProcessTops()
         metricSnapshot.topCPU = tops.cpu
@@ -404,7 +411,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         config = cfg
         placer.apply(cfg)
         syncMetrics()
-        renderStrip(width: item?.length ?? Placer.bandWidth)
+        // 带宽只跟菜单栏空间有关，改组件/外观不重新校准，避免带子跟着设置页忽宽忽窄
+        renderStrip(width: placer.width)
 
         // 外观相关配置变了 → 丢弃旧面板，下次点击时重建
         let probe = [
@@ -418,7 +426,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             panel?.orderOut(nil)
             panel = nil
         }
-        relayout(reason: "设置变更")
     }
 
     /// 每个组件的显示配置（全局「显示数值」关掉时，强制所有组件不显示文字）
@@ -470,11 +477,16 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// 宽度怎么调都救不回来（位置由系统决定），所以只确认一次，然后把「怎么让它重新出现」讲清楚。
     private func checkFolded() {
         foldChecked = true
-        guard let w = item?.button?.window else { return }
-        let f = w.frame
-        let visible = f.width > 40 && f.origin.x >= Placer.zoneStart - 2 && f.origin.y > 0
+        let f = item?.button?.window?.frame
+        let ax = MBar.own()
+        // 窗口 frame 不可靠：被 `<<` 收起时它仍可能停在屏幕内（实测 x=1162 w=318 却画不出来），
+        // 有 AX 权限时必须以「extras 列表里有没有自己」为准。
+        let visible = MBar.trusted() ? (ax != nil) : placer.isVisible
+        let geom = f.map { "x=\(Int($0.origin.x)) w=\(Int($0.width))" } ?? "无窗口"
+        Log.line("带子自检：\(geom) AX=\(ax == nil ? "无" : "有") 视口左缘=\(Int(Placer.zoneStart)) → \(visible ? "可见" : "被折叠/推走")")
         guard !visible else { return }
-        Log.line("带子被系统收进溢出区（窗口 x=\(Int(f.origin.x)) w=\(Int(f.width))，视口左缘 \(Int(Placer.zoneStart))）")
+        Log.line("带子被系统收进溢出区（\(geom)，视口左缘 \(Int(Placer.zoneStart))）")
+        guard ProcessInfo.processInfo.environment["STATUSX_NO_FOLD_HINT"] == nil else { return }
         guard !foldHintShown else { return }
         foldHintShown = true
         DispatchQueue.main.async { [weak self] in self?.showFoldHint() }
@@ -502,7 +514,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         config.metrics = [first.rawValue]
         config.save()
         shrinkFoldHintShown()
-        renderStrip(width: item?.length ?? Placer.bandWidth)
+        renderStrip(width: placer.width)
         Log.line("已切到紧凑模式：只保留 \(first.rawValue)")
     }
 
@@ -510,22 +522,46 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func shrinkFoldHintShown() { foldHintShown = false }
 
     private var outsideMonitor: Any?
-    /// 最近一次关闭面板的时间（挡住同一次点击引起的「关了又开」）
-    private var lastPanelCloseAt: CFAbsoluteTime = 0
+
+    /// 关面板并把点面板以外关闭的监听撤掉（面板一关就不留悬空监听）
+    private func closePanel() {
+        stopOutsideClickMonitor()
+        panel?.orderOut(nil)
+    }
+
+    private func stopOutsideClickMonitor() {
+        if let m = outsideMonitor {
+            NSEvent.removeMonitor(m)
+            outsideMonitor = nil
+        }
+    }
 
     /// 点面板以外的地方就关掉（代替「失焦自动关」）
     private func startOutsideClickMonitor() {
+        // 局部监听：只在面板打开时装；点带子走 action 收起，点面板里不关，
+        // 其余点（含别的应用）都关。只在面板开着时存在，不留悬空监听。
         guard outsideMonitor == nil else { return }
-        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
-            guard let self else { return }
-            // 点在状态项上：这是「收起面板」的点击，交给 togglePanel，别在这里先关一次
-            if let f = self.item?.button?.window?.frame, f.contains(NSEvent.mouseLocation) { return }
-            self.lastPanelCloseAt = CFAbsoluteTimeGetCurrent()
-            self.panel?.orderOut(nil)
-            if let m = self.outsideMonitor {
-                NSEvent.removeMonitor(m)
-                self.outsideMonitor = nil
+        outsideMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            guard let self else { return event }
+
+            // 鼠标全局坐标（Cocoa 屏坐标，y 朝上）
+            var loc = event.locationInWindow
+            if let w = event.window {
+                let wf = w.frame
+                loc = NSPoint(x: wf.origin.x + loc.x, y: wf.origin.y + loc.y)
             }
+
+            // 点在状态项上：交给 togglePanel 别在这里先关
+            if let f = self.item?.button?.window?.frame,
+               f.contains(loc) {
+                return event
+            }
+            // 点在面板里（按钮/滚动等）不关
+            if let p = self.panel, p.isVisible, p.frame.contains(loc) {
+                return event
+            }
+            closePanel()
+            return nil
         }
     }
 
@@ -571,7 +607,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             let real = MBar.scanAll().first { $0.pid == it.pid && $0.appName == it.appName }
             guard let real, real.frame.width > 4, real.frame.origin.x > Placer.zoneStart - 2 else {
                 Log.line("展开后仍拿不到 \(it.appName) 的真实坐标，放弃")
-                item.length = saved
+                self.restoreWidth(saved)
                 return
             }
             Log.line("展开后点击 \(it.appName) @ \(Int(real.frame.midX)),\(Int(real.frame.midY))")
@@ -590,7 +626,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         // 菜单已经弹过又关了 → 立刻恢复宽度
         if seen {
-            item?.length = saved
+            restoreWidth(saved)
             Log.line("菜单已关闭，恢复宽度 \(Int(saved))")
             return
         }
@@ -599,17 +635,27 @@ final class AppController: NSObject, NSApplicationDelegate {
             schedule(remaining: remaining, saved: saved, seen: false)
             return
         }
-        item?.length = saved
+        restoreWidth(saved)
         Log.line("\(Int(elapsed))s 内没有菜单窗口，恢复宽度 \(Int(saved))")
     }
 
     private func schedule(remaining: Double, saved: CGFloat, seen: Bool) {
         guard remaining > 0 else {
-            item?.length = saved
+            restoreWidth(saved)
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.waitMenuClosed(remaining: remaining - 0.4, saved: saved, seen: seen)
+        }
+    }
+
+    /// 临时缩窄后恢复：改长度会让系统重建按钮，必须重新挂回调和子视图，否则带子会空白
+    private func restoreWidth(_ saved: CGFloat) {
+        item?.length = saved
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) { [weak self] in
+            guard let self else { return }
+            self.configureButton()
+            self.renderStrip(width: saved)
         }
     }
 

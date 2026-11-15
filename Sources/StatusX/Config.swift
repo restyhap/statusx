@@ -2,13 +2,13 @@ import Foundation
 
 /// 配置文件：~/Library/Application Support/StatusX/config.json
 struct Config: Codable {
-    /// StatusX 状态项的固定宽度（设计值 310）
+    /// StatusX 状态项的宽度**上限**（310；实际宽度由菜单栏可用槽位决定，永远 ≤ 它）
     var bandWidth: Double = 310
     /// 310px 带子里显示哪些指标（cpu/memory/network/battery/fan）；不写 = 全部
     var metrics: [String]? = nil
     /// 是否在图标旁显示数值
     var metricValues: Bool? = nil
-    /// 带子宽度是否按启用的组件自动分配（上限 still `bandWidth`）
+    /// 旧版「自动宽度」开关（已停用：带宽固定为 min(310, 菜单栏可用槽位)）。保留字段兼容老配置。
     var autoWidth: Bool? = nil
     /// 每个组件自己的显示配置（键是 MetricKind.rawValue）
     var metricSettings: [String: MetricSettings]? = nil
@@ -48,7 +48,9 @@ struct Config: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let legacy = try decoder.container(keyedBy: LegacyKey.self)
         let legacyWidth = try legacy.decodeIfPresent(Double.self, forKey: LegacyKey(stringValue: "minWidth")!)
-        bandWidth = try c.decodeIfPresent(Double.self, forKey: .bandWidth) ?? legacyWidth ?? 310
+        let rawWidth = try c.decodeIfPresent(Double.self, forKey: .bandWidth) ?? legacyWidth ?? 310
+        // 手改配置也不能突破 310：上限是硬约束
+        bandWidth = min(310, max(44, rawWidth))
         metrics = try c.decodeIfPresent([String].self, forKey: .metrics)
         metricValues = try c.decodeIfPresent(Bool.self, forKey: .metricValues)
         autoWidth = try c.decodeIfPresent(Bool.self, forKey: .autoWidth)

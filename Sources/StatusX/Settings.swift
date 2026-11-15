@@ -668,10 +668,8 @@ final class SettingsWindowController: NSWindowController {
         let valuesPill = pill(Str.showValues, on: config.metricValues ?? true, enabled: true) { [weak self] picked in
             self?.update { $0.metricValues = picked }
         }
-        let autoPill = pill(Str.autoWidth, on: config.autoWidth ?? true, enabled: true) { [weak self] picked in
-            self?.update { $0.autoWidth = picked }
-        }
-        rows.append(sxHStack([valuesPill, autoPill, sxSpacer()], spacing: 6))
+        // 「自动宽度」已停用：带宽固定为 min(310, 菜单栏当前可用槽位)，不再随组件数/数值变化
+        rows.append(sxHStack([valuesPill, sxSpacer()], spacing: 6))
         rows.append(hint(Str.noteNet))
         rows.append(hint(Str.noteFan))
         return pane(rows)

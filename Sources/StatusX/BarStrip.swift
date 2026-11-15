@@ -395,6 +395,25 @@ enum BarStrip {
 
     // MARK: - 画带子
 
+    /// 一个组件都放不下时的兜底：只画一个小仪表标识。
+    /// 没有它，极窄（或全关组件）时状态项会是一条空白，用户既看不见也点不到。
+    static func glyph(dark: Bool) -> NSImage {
+        let w: CGFloat = 18
+        let h = imageHeight
+        let tint: NSColor = dark ? .white : .black
+        return NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
+            let conf = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+            guard let symbol = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent",
+                                       accessibilityDescription: "StatusX")?
+                .withSymbolConfiguration(conf) else { return false }
+            let s = symbol.size
+            symbol.draw(in: NSRect(x: (w - s.width) / 2, y: (h - s.height) / 2,
+                                   width: s.width, height: s.height))
+            return true
+        }
+    }
+
     static func make(dark: Bool, metrics s: MetricSnapshot,
                      items: [MetricKind], settings: [MetricKind: MetricSettings],
                      maxWidth: CGFloat, fillWidth: Bool = false) -> NSImage {
